@@ -18,6 +18,11 @@ on:
         required: false
         type: string
         default: "/home/ubuntu"
+      approval_label:
+        description: "Label name that allows external PRs to run (set to empty string to disable)"
+        required: false
+        type: string
+        default: "gpu"
     outputs:
       instance:
         description: "Instance ID for runs-on"
@@ -29,6 +34,14 @@ permissions:
 jobs:
   start-ec2-runner:
     runs-on: ubuntu-latest
+    # Security: Prevent unauthorized PR from launching EC2 instances
+    # Allows: push, workflow_dispatch, PRs from same repo, or PRs with approval label
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       (github.event.pull_request.head.repo.full_name == github.repository ||
+        (inputs.approval_label != '' && contains(github.event.pull_request.labels.*.name, inputs.approval_label))))
     outputs:
       instance: ${{ steps.aws-start.outputs.instance }}
     steps:
@@ -48,38 +61,38 @@ jobs:
           aws_home_dir: ${{ inputs.aws_home_dir }}
           aws_userdata: |
             #!/bin/bash
-            
+
             # Create self-termination service
             cat > /etc/systemd/system/github-runner-cleanup.service << 'EOF'
             [Unit]
             Description=GitHub Runner Self-Termination
             After=network.target
-            
+
             [Service]
             Type=simple
             ExecStart=/usr/local/bin/github-runner-cleanup.sh
             Restart=always
             RestartSec=60
             User=root
-            
+
             [Install]
             WantedBy=multi-user.target
             EOF
-            
+
             # Create cleanup script
             cat > /usr/local/bin/github-runner-cleanup.sh << 'EOF'
             #!/bin/bash
-            
+
             # Log function
             log() {
               echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> /var/log/github-runner-cleanup.log
             }
-            
+
             log "GitHub Runner cleanup service started"
-            
+
             # Wait for runner to be fully installed
             sleep 300  # 5 minutes to allow runner setup
-            
+
             while true; do
               # Check if runner process exists
               if pgrep -f "Runner.Listener" > /dev/null 2>&1; then
@@ -88,25 +101,25 @@ jobs:
                 # Double-check after a delay
                 log "Runner process not detected, waiting 60s before verification"
                 sleep 60
-                
+
                 if ! pgrep -f "Runner.Listener" > /dev/null 2>&1; then
                   log "Runner confirmed stopped, initiating self-termination"
-                  
+
                   # Set instance termination
                   shutdown -h +2 "GitHub Runner job completed, terminating instance"
-                  
+
                   exit 0
                 else
                   log "False alarm, runner still active"
                 fi
               fi
-              
+
               sleep 60
             done
             EOF
-            
+
             chmod +x /usr/local/bin/github-runner-cleanup.sh
-            
+
             # Enable and start the service
             systemctl daemon-reload
             systemctl enable github-runner-cleanup.service

@@ -27,6 +27,14 @@ In your GitHub organization settings, create these secrets:
 - `AWS_ROLE`: ARN of your AWS IAM role (e.g., `arn:aws:iam::123456789012:role/GitHubActionsRole`)
 - `GH_SA_TOKEN`: GitHub token with permissions to manage self-hosted runners
 
+### 3. Create Approval Label (Optional)
+
+If you want to allow trusted external contributors to run GPU tests:
+1. Go to your repository's Issues tab
+2. Click Labels → New label
+3. Create a label named `gpu` (or your custom name)
+4. Maintainers can apply this label to PRs to authorize GPU runs
+
 ## Usage
 
 In your workflow:
@@ -48,11 +56,11 @@ jobs:
     runs-on: ${{ needs.ec2.outputs.instance }}
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Run GPU tests
         run: |
           python -m pytest tests/gpu -v
-      
+
       # No stop job needed - instance self-terminates!
 ```
 
@@ -63,6 +71,7 @@ jobs:
 | `aws_instance_type` | EC2 instance type | `g6.xlarge` |
 | `aws_image_id` | AMI ID | `ami-00096836009b16a22` (Deep Learning AMI) |
 | `aws_home_dir` | Home directory path | `/home/ubuntu` |
+| `approval_label` | Label name for external PR approval (empty to disable) | `gpu` |
 
 ## How It Works
 
@@ -71,6 +80,41 @@ jobs:
 3. Your job runs on the EC2 instance
 4. A systemd service monitors the runner process
 5. When the runner stops (job completes), the instance self-terminates after 2 minutes
+
+## Security
+
+### Fork Protection
+This workflow includes built-in protection against unauthorized EC2 launches from forked repositories. EC2 instances will only start for:
+- Direct pushes to your repository
+- Manual workflow dispatches
+- Pull requests from branches within your repository (not forks)
+- Pull requests from forks that have the approval label (default: `gpu`) applied by a maintainer
+
+This prevents unauthorized external contributors from using your AWS resources through pull requests.
+
+### Label-Based Approval for External Contributors
+For trusted external contributors, maintainers can approve GPU testing by:
+1. Adding the approval label (default: `gpu`) to a pull request
+2. The workflow will then run with EC2 instances
+3. The label should be removed after the run completes
+
+To customize the label name:
+```yaml
+jobs:
+  ec2:
+    uses: Open-Athena/ec2/.github/workflows/runner.yml@v1
+    secrets: inherit
+    with:
+      approval_label: "run-benchmarks"  # Custom label name
+```
+
+To disable label-based approval entirely:
+```yaml
+with:
+  approval_label: ""  # Empty string disables external PR approval
+```
+
+This follows the same pattern used by scikit-learn and other major open source projects for expensive CI resources.
 
 ## Troubleshooting
 
