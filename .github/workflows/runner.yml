@@ -1,0 +1,115 @@
+name: EC2 Runner
+
+on:
+  workflow_call:
+    inputs:
+      aws_image_id:
+        description: "AWS AMI ID to use"
+        required: false
+        type: string
+        default: "ami-00096836009b16a22" # Deep Learning OSS Nvidia Driver AMI GPU PyTorch
+      aws_instance_type:
+        description: "AWS instance type"
+        required: false
+        type: string
+        default: "g6.xlarge"
+      aws_home_dir:
+        description: "Home directory on the AWS instance"
+        required: false
+        type: string
+        default: "/home/ubuntu"
+    outputs:
+      instance:
+        description: "Instance ID for runs-on"
+        value: ${{ jobs.start-ec2-runner.outputs.instance }}
+
+permissions:
+  id-token: write # Required for AWS OIDC
+
+jobs:
+  start-ec2-runner:
+    runs-on: ubuntu-latest
+    outputs:
+      instance: ${{ steps.aws-start.outputs.instance }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE }}
+          role-session-name: github-actions-session
+          aws-region: us-east-1
+
+      - name: Create cloud runner with self-termination
+        id: aws-start
+        uses: omsf/start-aws-gha-runner@v1.0.0
+        with:
+          aws_image_id: ${{ inputs.aws_image_id }}
+          aws_instance_type: ${{ inputs.aws_instance_type }}
+          aws_home_dir: ${{ inputs.aws_home_dir }}
+          aws_userdata: |
+            #!/bin/bash
+            
+            # Create self-termination service
+            cat > /etc/systemd/system/github-runner-cleanup.service << 'EOF'
+            [Unit]
+            Description=GitHub Runner Self-Termination
+            After=network.target
+            
+            [Service]
+            Type=simple
+            ExecStart=/usr/local/bin/github-runner-cleanup.sh
+            Restart=always
+            RestartSec=60
+            User=root
+            
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+            
+            # Create cleanup script
+            cat > /usr/local/bin/github-runner-cleanup.sh << 'EOF'
+            #!/bin/bash
+            
+            # Log function
+            log() {
+              echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> /var/log/github-runner-cleanup.log
+            }
+            
+            log "GitHub Runner cleanup service started"
+            
+            # Wait for runner to be fully installed
+            sleep 300  # 5 minutes to allow runner setup
+            
+            while true; do
+              # Check if runner process exists
+              if pgrep -f "Runner.Listener" > /dev/null 2>&1; then
+                log "Runner process detected, continuing monitoring"
+              else
+                # Double-check after a delay
+                log "Runner process not detected, waiting 60s before verification"
+                sleep 60
+                
+                if ! pgrep -f "Runner.Listener" > /dev/null 2>&1; then
+                  log "Runner confirmed stopped, initiating self-termination"
+                  
+                  # Set instance termination
+                  shutdown -h +2 "GitHub Runner job completed, terminating instance"
+                  
+                  exit 0
+                else
+                  log "False alarm, runner still active"
+                fi
+              fi
+              
+              sleep 60
+            done
+            EOF
+            
+            chmod +x /usr/local/bin/github-runner-cleanup.sh
+            
+            # Enable and start the service
+            systemctl daemon-reload
+            systemctl enable github-runner-cleanup.service
+            systemctl start github-runner-cleanup.service
+        env:
+          GH_PAT: ${{ secrets.GH_SA_TOKEN }}
