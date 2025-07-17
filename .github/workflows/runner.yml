@@ -32,6 +32,11 @@ on:
         description: "Name of the EC2 key pair to use for SSH access"
         required: false
         type: string
+      poll_interval:
+        description: "Interval in seconds to check if GHA process is still running"
+        required: false
+        type: number
+        default: 30
     outputs:
       instance:
         description: "Instance ID for runs-on"
@@ -100,6 +105,8 @@ jobs:
             }
 
             log "GitHub Runner cleanup service started"
+            POLL_INTERVAL=${{ inputs.poll_interval }}
+            log "Poll interval set to $POLL_INTERVAL seconds"
 
             # Wait for runner to be fully installed
             WAIT_MINUTES=${{ inputs.shutdown_poll_wait }}
@@ -113,8 +120,8 @@ jobs:
                 log "Runner process detected, continuing monitoring"
               else
                 # Double-check after a delay
-                log "Runner process not detected, waiting 60s before verification"
-                sleep 60
+                log "Runner process not detected, waiting $POLL_INTERVAL seconds before verification"
+                sleep $POLL_INTERVAL
 
                 if ! pgrep -f "Runner.Listener" > /dev/null 2>&1; then
                   log "Runner confirmed stopped, initiating self-termination"
@@ -128,7 +135,7 @@ jobs:
                 fi
               fi
 
-              sleep 60
+              sleep $POLL_INTERVAL
             done
             EOF
 
