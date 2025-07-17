@@ -27,7 +27,7 @@ on:
         description: "Minutes to wait for runner setup before monitoring for termination"
         required: false
         type: number
-        default: 3
+        default: 0
     outputs:
       instance:
         description: "Instance ID for runs-on"
