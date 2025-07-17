@@ -73,6 +73,7 @@ jobs:
 | `aws_image_id` | AMI ID | `ami-00096836009b16a22` (Deep Learning AMI) |
 | `aws_home_dir` | Home directory path | `/home/ubuntu` |
 | `approval_label` | Label name for external PR approval (empty to disable) | `gpu` |
+| `shutdown_poll_wait` | Minutes to wait for runner setup before monitoring | `3` |
 
 ## How It Works
 
@@ -120,9 +121,34 @@ This follows the same pattern used by scikit-learn and other major open source p
 ## Troubleshooting
 
 ### Instance doesn't terminate
-- Check CloudWatch logs for the `github-runner-cleanup` service
-- Verify the runner process name matches `Runner.Listener`
-- Ensure the instance has permissions to terminate itself
+
+If the instance doesn't terminate after the workflow completes:
+
+1. **Connect to the instance** using AWS Systems Manager:
+   ```bash
+   aws ssm start-session --target i-xxxxx --region us-east-1
+   ```
+
+2. **Check the cleanup service logs**:
+   ```bash
+   sudo journalctl -u github-runner-cleanup
+   sudo cat /var/log/github-runner-cleanup.log
+   ```
+
+3. **Verify the service status**:
+   ```bash
+   sudo systemctl status github-runner-cleanup
+   ```
+
+4. **Check termination behavior**:
+   ```bash
+   aws ec2 describe-instance-attribute \
+     --instance-id $(ec2-metadata --instance-id | cut -d " " -f 2) \
+     --attribute instanceInitiatedShutdownBehavior \
+     --region us-east-1
+   ```
+
+**Note**: The cleanup service waits 3 minutes (configurable via `shutdown_poll_wait`) before starting to monitor the runner process.
 
 ### Runner not connecting
 - Verify `GH_SA_TOKEN` has correct permissions

@@ -23,6 +23,11 @@ on:
         required: false
         type: string
         default: "gpu"
+      shutdown_poll_wait:
+        description: "Minutes to wait for runner setup before monitoring for termination"
+        required: false
+        type: number
+        default: 3
     outputs:
       instance:
         description: "Instance ID for runs-on"
@@ -97,7 +102,10 @@ jobs:
             log "GitHub Runner cleanup service started"
 
             # Wait for runner to be fully installed
-            sleep 300  # 5 minutes to allow runner setup
+            WAIT_MINUTES=${{ inputs.shutdown_poll_wait }}
+            WAIT_SECONDS=$((WAIT_MINUTES * 60))
+            log "Waiting $WAIT_MINUTES minutes for runner setup..."
+            sleep $WAIT_SECONDS
 
             while true; do
               # Check if runner process exists
