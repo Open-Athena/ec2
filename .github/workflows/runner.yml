@@ -43,7 +43,7 @@ jobs:
        (github.event.pull_request.head.repo.full_name == github.repository ||
         (inputs.approval_label != '' && contains(github.event.pull_request.labels.*.name, inputs.approval_label))))
     outputs:
-      instance: ${{ steps.aws-start.outputs.instance }}
+      instance: ${{ steps.aws-start.outputs.label }}
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -52,15 +52,21 @@ jobs:
           role-session-name: github-actions-session
           aws-region: us-east-1
 
-      - name: Create cloud runner with self-termination
+      - name: Create cloud runner
         id: aws-start
-        uses: omsf/start-aws-gha-runner@v1.0.0
+        uses: Open-Athena/start-aws-gha-runner@main
         with:
           aws_image_id: ${{ inputs.aws_image_id }}
           aws_instance_type: ${{ inputs.aws_instance_type }}
           aws_home_dir: ${{ inputs.aws_home_dir }}
+          # Uses AWS account defaults for subnet and security group
           aws_userdata: |
-            #!/bin/bash
+            # Set instance to terminate on shutdown
+            INSTANCE_ID=$(ec2-metadata --instance-id | cut -d " " -f 2)
+            aws ec2 modify-instance-attribute \
+              --instance-id $INSTANCE_ID \
+              --instance-initiated-shutdown-behavior terminate \
+              --region us-east-1 || true
 
             # Create self-termination service
             cat > /etc/systemd/system/github-runner-cleanup.service << 'EOF'
@@ -105,8 +111,8 @@ jobs:
                 if ! pgrep -f "Runner.Listener" > /dev/null 2>&1; then
                   log "Runner confirmed stopped, initiating self-termination"
 
-                  # Set instance termination
-                  shutdown -h +2 "GitHub Runner job completed, terminating instance"
+                  # Shutdown instance (will terminate due to modify-instance-attribute)
+                  shutdown -h now
 
                   exit 0
                 else

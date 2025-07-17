@@ -9,6 +9,7 @@ Self-terminating EC2 runner for GitHub Actions with minimal boilerplate.
 - 🔑 Uses GitHub OIDC for AWS authentication (no long-lived credentials)
 - ⚡ Single reusable workflow call
 - 🎯 GPU-optimized AMI by default
+- 🔒 Uses Open-Athena's fork of start-aws-gha-runner for `userdata` support
 
 ## Setup
 
@@ -79,7 +80,7 @@ jobs:
 2. A GitHub Actions runner is automatically installed and registered
 3. Your job runs on the EC2 instance
 4. A systemd service monitors the runner process
-5. When the runner stops (job completes), the instance self-terminates after 2 minutes
+5. When the runner stops (job completes), the instance self-terminates automatically
 
 ## Security
 
