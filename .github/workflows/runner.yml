@@ -74,6 +74,21 @@ jobs:
           aws_instance_type: ${{ inputs.aws_instance_type }}
           aws_home_dir: ${{ inputs.aws_home_dir }}
           aws_key_name: ${{ inputs.aws_key_name }}
+          aws_tags: |
+            [
+              {
+                "Key": "gha_url",
+                "Value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              },
+              {
+                "Key": "workflow",
+                "Value": "${{ github.workflow }}"
+              },
+              {
+                "Key": "repository",
+                "Value": "${{ github.repository }}"
+              }
+            ]
           # Uses AWS account defaults for subnet and security group
           aws_userdata: |
             # Instance is already configured to terminate on shutdown via launch parameter
