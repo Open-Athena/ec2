@@ -66,12 +66,7 @@ jobs:
           aws_home_dir: ${{ inputs.aws_home_dir }}
           # Uses AWS account defaults for subnet and security group
           aws_userdata: |
-            # Set instance to terminate on shutdown
-            INSTANCE_ID=$(ec2-metadata --instance-id | cut -d " " -f 2)
-            aws ec2 modify-instance-attribute \
-              --instance-id $INSTANCE_ID \
-              --instance-initiated-shutdown-behavior terminate \
-              --region us-east-1 || true
+            # Instance is already configured to terminate on shutdown via launch parameter
 
             # Create self-termination service
             cat > /etc/systemd/system/github-runner-cleanup.service << 'EOF'
@@ -119,7 +114,7 @@ jobs:
                 if ! pgrep -f "Runner.Listener" > /dev/null 2>&1; then
                   log "Runner confirmed stopped, initiating self-termination"
 
-                  # Shutdown instance (will terminate due to modify-instance-attribute)
+                  # Shutdown instance (will terminate due to launch configuration)
                   shutdown -h now
 
                   exit 0
