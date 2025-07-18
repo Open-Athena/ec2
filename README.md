@@ -1,6 +1,5 @@
 # Open-Athena/ec2
-
-Self-terminating EC2 runner for GitHub Actions with minimal boilerplate.
+Auto-terminating EC2 GHA runner.
 
 ## Features
 
