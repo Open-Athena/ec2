@@ -27,7 +27,7 @@ on:
         description: "Minutes to wait for runner setup before monitoring for termination"
         required: false
         type: number
-        default: 0
+        default: 3
       aws_key_name:
         description: "Name of the EC2 key pair to use for SSH access"
         required: false
@@ -93,6 +93,48 @@ jobs:
           aws_userdata: |
             # Instance is already configured to terminate on shutdown via launch parameter
 
+            # Create log file for debugging
+            exec > >(tee -a /var/log/runner-setup.log)
+            exec 2>&1
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting runner setup userdata script"
+
+            # Install SSH keys if provided via secret
+            if [ -n "${{ secrets.SSH_PRIVATE_KEY }}" ]; then
+              echo "[$(date '+%Y-%m-%d %H:%M:%S')] Installing SSH private key"
+              # Get the home directory for the default user (ec2-user or ubuntu)
+              if id ec2-user &>/dev/null; then
+                USER_HOME="/home/ec2-user"
+                DEFAULT_USER="ec2-user"
+              elif id ubuntu &>/dev/null; then
+                USER_HOME="/home/ubuntu"
+                DEFAULT_USER="ubuntu"
+              else
+                USER_HOME="/root"
+                DEFAULT_USER="root"
+              fi
+
+              # Create .ssh directory if it doesn't exist
+              mkdir -p "$USER_HOME/.ssh"
+              chmod 700 "$USER_HOME/.ssh"
+
+              # Add the private key
+              echo "${{ secrets.SSH_PRIVATE_KEY }}" > "$USER_HOME/.ssh/id_rsa"
+              chmod 600 "$USER_HOME/.ssh/id_rsa"
+
+              # Generate public key from private key
+              ssh-keygen -y -f "$USER_HOME/.ssh/id_rsa" > "$USER_HOME/.ssh/id_rsa.pub"
+              chmod 644 "$USER_HOME/.ssh/id_rsa.pub"
+
+              # Add to authorized_keys for SSH access
+              cat "$USER_HOME/.ssh/id_rsa.pub" >> "$USER_HOME/.ssh/authorized_keys"
+              chmod 600 "$USER_HOME/.ssh/authorized_keys"
+
+              # Fix ownership
+              chown -R "$DEFAULT_USER:$DEFAULT_USER" "$USER_HOME/.ssh"
+
+              echo "[$(date '+%Y-%m-%d %H:%M:%S')] SSH key installation completed"
+            fi
+
             # Create self-termination service
             cat > /etc/systemd/system/github-runner-cleanup.service << 'EOF'
             [Unit]
@@ -130,15 +172,15 @@ jobs:
             sleep $WAIT_SECONDS
 
             while true; do
-              # Check if runner process exists
-              if pgrep -f "Runner.Listener" > /dev/null 2>&1; then
+              # Check if runner process exists or is being configured
+              if pgrep -f "Runner.Listener" > /dev/null 2>&1 || pgrep -f "config.sh" > /dev/null 2>&1 || pgrep -f "run.sh" > /dev/null 2>&1; then
                 log "Runner process detected, continuing monitoring"
               else
                 # Double-check after a delay
                 log "Runner process not detected, waiting $POLL_INTERVAL seconds before verification"
                 sleep $POLL_INTERVAL
 
-                if ! pgrep -f "Runner.Listener" > /dev/null 2>&1; then
+                if ! pgrep -f "Runner.Listener" > /dev/null 2>&1 && ! pgrep -f "config.sh" > /dev/null 2>&1 && ! pgrep -f "run.sh" > /dev/null 2>&1; then
                   log "Runner confirmed stopped, initiating self-termination"
 
                   # Shutdown instance (will terminate due to launch configuration)
@@ -159,6 +201,11 @@ jobs:
             # Enable and start the service
             systemctl daemon-reload
             systemctl enable github-runner-cleanup.service
+
+            # Create a marker file to indicate userdata completion
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Userdata script completed" >> /var/log/runner-setup.log
+            touch /var/run/runner-userdata-complete
+
             systemctl start github-runner-cleanup.service
         env:
           GH_PAT: ${{ secrets.GH_SA_TOKEN }}
