@@ -119,7 +119,20 @@ Priority: workflow inputs > environment variables > hardcoded defaults
 
 ## Security
 
+### AWS Authentication
 This workflow uses GitHub OIDC for AWS authentication, eliminating the need for long-lived credentials. Ensure your AWS IAM role is properly configured to trust only your GitHub organization/repository.
+
+### Public repos: set "Require approval for all external contributors", don't approve
+If you want to use this action on a public repo, you need to protect against external contributors triggering workflows with access to your `AWS_ROLE` secret.
+
+Recommended settings / protocol:
+1. In your repository settings, enable "Require approval for all external contributors" under "Actions" → "General".
+2. **Never directly approve workflow runs** from external contributors. Instead:
+   - Create a temporary branch from the external contributor's commit.
+   - Trigger the workflow on this temporary branch, using a `workflow_dispatch` event (from the web UI or `gh` CLI)
+   - Delete the branch when done.
+
+This ensures external contributors never gain persistent workflow execution rights.
 
 ## SSH Debugging
 
