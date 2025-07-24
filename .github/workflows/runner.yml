@@ -107,16 +107,20 @@ jobs:
 
             # Configure SSH access
             # Get the home directory for the default user
-            if id ec2-user &>/dev/null; then
-              USER_HOME="/home/ec2-user"
-              DEFAULT_USER="ec2-user"
-            elif id ubuntu &>/dev/null; then
-              USER_HOME="/home/ubuntu"
-              DEFAULT_USER="ubuntu"
-            else
-              USER_HOME="/root"
-              DEFAULT_USER="root"
-            fi
+            case "$(id -un 2>/dev/null)" in
+              ec2-user)
+                USER_HOME="/home/ec2-user"
+                DEFAULT_USER="ec2-user"
+                ;;
+              ubuntu)
+                USER_HOME="/home/ubuntu"
+                DEFAULT_USER="ubuntu"
+                ;;
+              *)
+                USER_HOME="/root"
+                DEFAULT_USER="root"
+                ;;
+            esac
 
             # Create .ssh directory if it doesn't exist
             mkdir -p "$USER_HOME/.ssh"
@@ -215,7 +219,7 @@ jobs:
                 if ! pgrep -f "Runner.Listener" > /dev/null 2>&1 && ! pgrep -f "config.sh" > /dev/null 2>&1 && ! pgrep -f "run.sh" > /dev/null 2>&1; then
                   log "Runner confirmed stopped, initiating self-termination"
 
-                  # Shutdown instance (will terminate due to launch configuration)
+                  # Shutdown instance (will terminate due to launch configuration; see start_aws_gha_runner/start.py)
                   shutdown -h now
 
                   exit 0
