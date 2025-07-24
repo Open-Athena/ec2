@@ -24,11 +24,15 @@ Your AWS role needs permissions to:
 
 The role must trust GitHub's OIDC provider. See [GitHub's documentation](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services) for setup.
 
-### 2. Set Organization Secrets
+### 2. Configure Secrets and Variables
 
-In your GitHub organization settings, create these secrets:
-- `AWS_ROLE`: ARN of your AWS IAM role (e.g., `arn:aws:iam::123456789012:role/GitHubActionsRole`)
+#### Required Secret:
 - `GH_SA_TOKEN`: GitHub token with permissions to manage self-hosted runners
+
+#### Required Variable (or pass as input):
+- `AWS_ROLE`: ARN of your AWS IAM role (e.g., `arn:aws:iam::123456789012:role/GitHubActionsRole`)
+
+Set these in your GitHub organization or repository settings.
 
 
 ## Minimal Example
@@ -67,7 +71,7 @@ on: [push, pull_request]
 jobs:
   ec2:
     uses: Open-Athena/ec2/.github/workflows/runner.yml@main
-    secrets: inherit  # Requires `AWS_ROLE`, `GH_SA_TOKEN`
+    secrets: inherit  # Requires `GH_SA_TOKEN`
     with:
       aws_instance_type: "g4dn.xlarge"  # Optional, defaults to g4dn.xlarge
 
@@ -89,6 +93,7 @@ jobs:
 
 | Input | Description | Default |
 |-------|-------------|---------|
+| `aws_role` | AWS role ARN for EC2 operations | `vars.AWS_ROLE` |
 | `aws_instance_type` | EC2 instance type | [`g4dn.xlarge`](https://instances.vantage.sh/aws/ec2/g4dn.xlarge) (cheapest GPU instance) |
 | `aws_image_id` | AMI ID | `ami-00096836009b16a22` (Deep Learning AMI) |
 | `aws_home_dir` | Home directory path | `/home/ubuntu` |
@@ -102,10 +107,12 @@ jobs:
 
 Set these as organization or repository variables for defaults:
 
+- `AWS_ROLE` - AWS role ARN for EC2 operations (required if not passed as input)
 - `EC2_IMAGE_ID` - Default AMI ID
 - `EC2_INSTANCE_TYPE` - Default instance type
 - `EC2_KEY_NAME` - Default SSH key pair name
 - `EC2_SECURITY_GROUP_ID` - Default security group ID
+- `SSH_PUBKEY` - Default SSH public key to add to instances
 
 Priority: workflow inputs > environment variables > hardcoded defaults
 

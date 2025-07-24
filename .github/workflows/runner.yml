@@ -1,27 +1,27 @@
 name: EC2 Runner
 #
-# Environment variables (set at org/repo level):
+# Environment variables (can be set at org/repo level):
+#   AWS_ROLE - AWS role ARN for EC2 operations (required if not passed as input)
 #   EC2_IMAGE_ID - Default AMI ID
 #   EC2_INSTANCE_TYPE - Default instance type
 #   EC2_HOME_DIR - Default home directory
 #   EC2_KEY_NAME - Default SSH key pair name
 #   EC2_SECURITY_GROUP_ID - Default security group ID
+#   SSH_PUBKEY - Default SSH public key to add to instances
 #
 # Priority: inputs > vars > defaults
 
 on:
   workflow_call:
     secrets:
-      AWS_ROLE:
-        description: "AWS role ARN to assume for EC2 operations"
-        required: true
       GH_SA_TOKEN:
         description: "GitHub token with permissions to manage self-hosted runners"
         required: true
-      SSH_PUBKEY:
-        description: "SSH public key to add to authorized_keys (optional)"
-        required: false
     inputs:
+      aws_role:
+        description: "AWS role ARN to assume for EC2 operations"
+        required: false
+        type: string
       aws_image_id:
         description: "AWS AMI ID to use"
         required: false
@@ -43,7 +43,7 @@ on:
         type: number
         default: 3
       aws_key_name:
-        description: "Name of the EC2 key pair to use for SSH access"
+        description: "Name of an EC2 key pair to use for SSH access (optional)"
         required: false
         type: string
       aws_security_group_id:
@@ -56,7 +56,7 @@ on:
         type: number
         default: 15
       ssh_pubkey:
-        description: "SSH public key to add to authorized_keys (optional input)"
+        description: "SSH public key to add to authorized_keys (optional)"
         required: false
         type: string
     outputs:
@@ -73,16 +73,24 @@ jobs:
     outputs:
       instance: ${{ steps.aws-start.outputs.label }}
     steps:
+      - name: Check AWS_ROLE configuration
+        run: |
+          if [ -z "${{ inputs.aws_role || vars.AWS_ROLE }}" ]; then
+            echo "ERROR: AWS_ROLE must be provided either as an input or as a repository/organization variable"
+            echo "Please set 'aws_role' input or 'AWS_ROLE' variable"
+            exit 1
+          fi
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE }}
+          role-to-assume: ${{ inputs.aws_role || vars.AWS_ROLE }}
           role-session-name: github-actions-session
           aws-region: us-east-1
 
       - name: Create cloud runner
         id: aws-start
-        uses: Open-Athena/start-aws-gha-runner@dev
+        uses: Open-Athena/start-aws-gha-runner@v1
         with:
           aws_image_id: ${{ inputs.aws_image_id || vars.EC2_IMAGE_ID || 'ami-00096836009b16a22' }}
           aws_instance_type: ${{ inputs.aws_instance_type || vars.EC2_INSTANCE_TYPE || 'g4dn.xlarge' }}
@@ -96,7 +104,6 @@ jobs:
               { "Key": "repository", "Value": "${{ github.repository }}" },
               { "Key": "gha_url", "Value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" }
             ]
-          # Uses AWS account defaults for subnet and security group
           aws_userdata: |
             # Instance is already configured to terminate on shutdown via launch parameter
 
@@ -128,10 +135,10 @@ jobs:
             touch "$USER_HOME/.ssh/authorized_keys"
             chmod 600 "$USER_HOME/.ssh/authorized_keys"
 
-            # Add default SSH public key from secret if provided
-            if [ -n "${{ secrets.SSH_PUBKEY }}" ]; then
-              echo "[$(date '+%Y-%m-%d %H:%M:%S')] Adding default SSH public key from secret"
-              echo "${{ secrets.SSH_PUBKEY }}" >> "$USER_HOME/.ssh/authorized_keys"
+            # Add default SSH public key from variable if provided
+            if [ -n "${{ vars.SSH_PUBKEY }}" ]; then
+              echo "[$(date '+%Y-%m-%d %H:%M:%S')] Adding default SSH public key from variable"
+              echo "${{ vars.SSH_PUBKEY }}" >> "$USER_HOME/.ssh/authorized_keys"
             fi
 
             # Add input SSH public key if provided
