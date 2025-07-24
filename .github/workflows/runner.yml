@@ -19,21 +19,21 @@ on:
         required: true
     inputs:
       aws_role:
-        description: "AWS role ARN to assume for EC2 operations"
+        description: "AWS role ARN to assume for EC2 operations (falls back to vars.AWS_ROLE)"
         required: false
         type: string
       aws_image_id:
-        description: "AWS AMI ID to use"
+        description: "AWS AMI ID to use (falls back to vars.EC2_IMAGE_ID)"
         required: false
         type: string
         default: "ami-00096836009b16a22" # Deep Learning OSS Nvidia Driver AMI GPU PyTorch
       aws_instance_type:
-        description: "AWS instance type"
+        description: "AWS instance type (falls back to vars.EC2_INSTANCE_TYPE)"
         required: false
         type: string
         default: "g4dn.xlarge"
       aws_home_dir:
-        description: "Home directory on the AWS instance"
+        description: "Home directory on the AWS instance (falls back to vars.EC2_HOME_DIR)"
         required: false
         type: string
         default: "/home/ubuntu"
@@ -43,11 +43,11 @@ on:
         type: number
         default: 3
       aws_key_name:
-        description: "Name of an EC2 key pair to use for SSH access (optional)"
+        description: "Name of an EC2 key pair to use for SSH access (falls back to vars.EC2_KEY_NAME)"
         required: false
         type: string
       aws_security_group_id:
-        description: "AWS security group ID (defaults to account default if not specified)"
+        description: "AWS security group ID (falls back to vars.EC2_SECURITY_GROUP_ID)"
         required: false
         type: string
       poll_interval:
@@ -56,7 +56,7 @@ on:
         type: number
         default: 15
       ssh_pubkey:
-        description: "SSH public key to add to authorized_keys (optional)"
+        description: "SSH public key to add to authorized_keys (falls back to vars.SSH_PUBKEY)"
         required: false
         type: string
     outputs:
