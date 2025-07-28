@@ -203,7 +203,7 @@ If you want to use this action on a public repo, you should restrict external co
 
 The best way to do this is to enable "Require approval for all external contributors" under "Actions" → "General".
 
-## SSH Debugging
+## SSH Debugging <a id="ssh-debugging"></a>
 
 ### Initial Setup
 
@@ -322,10 +322,9 @@ sudo cat /usr/local/bin/github-runner-cleanup.sh
 
 If the instance doesn't terminate after the workflow completes:
 
-1. **Connect to the instance** using AWS Systems Manager:
-   ```bash
-   aws ssm start-session --target i-xxxxx --region us-east-1
-   ```
+1. **Connect to the instance** using SSH
+
+   (This requires having provided an `ec2_key_name` (or `ssh_pubkey`) and `ec2_security_group`; see [SSH Debugging](#ssh-debugging) above).
 
 2. **Check the cleanup service logs**:
    ```bash
