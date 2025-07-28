@@ -179,6 +179,7 @@ Set these as organization or repository variables for defaults:
 - `AWS_ROLE` - AWS role ARN for EC2 operations (required if not passed as input)
 - `EC2_IMAGE_ID` - Default AMI ID
 - `EC2_INSTANCE_TYPE` - Default instance type
+- `EC2_HOME_DIR` - Default home directory path (should match the default AMI)
 - `EC2_KEY_NAME` - Default SSH key pair name
 - `EC2_SECURITY_GROUP_ID` - Default security group ID
 - `SSH_PUBKEY` - Default SSH public key to add to instances
@@ -187,11 +188,11 @@ Priority: workflow inputs > environment variables > hardcoded defaults
 
 ## How It Works
 
-1. The workflow starts an EC2 instance using the specified configuration
-2. A GitHub Actions runner is automatically installed and registered
+1. The workflow launches an EC2 instance using the specified configuration
+2. A GitHub Actions runner is installed and registered
 3. Your job runs on the EC2 instance
-4. A systemd service monitors the runner process on the instance
-5. When the runner stops (job completes), the instance self-terminates
+4. A `systemd` service monitors the runner process on the instance (polling every 15 seconds, by default)
+5. When the runner stops (job completes, detected as 2 consecutive runner-process "health checks" failing), the instance self-terminates
 
 ## Security
 
