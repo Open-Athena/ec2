@@ -92,9 +92,9 @@ jobs:
         id: aws-start
         uses: Open-Athena/start-aws-gha-runner@v1
         with:
-          aws_image_id: ${{ inputs.aws_image_id || vars.EC2_IMAGE_ID || 'ami-00096836009b16a22' }}
-          aws_instance_type: ${{ inputs.aws_instance_type || vars.EC2_INSTANCE_TYPE || 'g4dn.xlarge' }}
-          aws_home_dir: ${{ inputs.aws_home_dir || vars.EC2_HOME_DIR || '/home/ubuntu' }}
+          aws_image_id: ${{ inputs.aws_image_id || vars.EC2_IMAGE_ID }}
+          aws_instance_type: ${{ inputs.aws_instance_type || vars.EC2_INSTANCE_TYPE }}
+          aws_home_dir: ${{ inputs.aws_home_dir || vars.EC2_HOME_DIR }}
           aws_key_name: ${{ inputs.aws_key_name || vars.EC2_KEY_NAME }}
           aws_security_group_id: ${{ inputs.aws_security_group_id || vars.EC2_SECURITY_GROUP_ID }}
           aws_tags: |
