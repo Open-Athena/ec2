@@ -45,16 +45,6 @@ on:
         description: "AWS security group ID (falls back to vars.EC2_SECURITY_GROUP_ID)"
         required: false
         type: string
-      shutdown_poll_wait:
-        description: "Minutes to wait for runner setup before monitoring for termination"
-        required: false
-        type: number
-        default: 3
-      poll_interval:
-        description: "Interval in seconds to check if GHA process is still running"
-        required: false
-        type: number
-        default: 15
       ssh_pubkey:
         description: "SSH public key to add to authorized_keys (falls back to vars.SSH_PUBKEY)"
         required: false
@@ -172,99 +162,55 @@ jobs:
               echo "[$(date '+%Y-%m-%d %H:%M:%S')] No SSH keys configured"
             fi
 
-            # Create self-termination service
-            cat > /etc/systemd/system/github-runner-cleanup.service << 'EOF'
-            [Unit]
-            Description=GitHub Runner Self-Termination
-            After=network.target
-
-            [Service]
-            Type=simple
-            ExecStart=/usr/local/bin/github-runner-cleanup.sh
-            Restart=always
-            RestartSec=60
-            User=root
-
-            [Install]
-            WantedBy=multi-user.target
-            EOF
-
-            # Create cleanup script
-            cat > /usr/local/bin/github-runner-cleanup.sh << 'EOF'
+            # Create runner hook script for auto-termination
+            cat > /opt/runner-termination-hook.sh << 'EOF'
             #!/bin/bash
 
             # Log function
             log() {
-              echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> /var/log/github-runner-cleanup.log
+              echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/runner-termination-hook.log
             }
 
-            log "GitHub Runner cleanup service started"
-            POLL_INTERVAL=${{ inputs.poll_interval }}
-            log "Poll interval set to $POLL_INTERVAL seconds"
+            log "GitHub Runner termination hook triggered"
+            log "Job Name: ${GITHUB_JOB}"
+            log "Repository: ${GITHUB_REPOSITORY}"
+            log "Run ID: ${GITHUB_RUN_ID}"
+            log "Runner Name: ${RUNNER_NAME}"
 
-            # Smart wait for runner to be installed
-            WAIT_MINUTES=${{ inputs.shutdown_poll_wait }}
-            MAX_WAIT_SECONDS=$((WAIT_MINUTES * 60))
-            WAITED=0
-            CHECK_INTERVAL=10
+            # Give a brief moment for any cleanup
+            sleep 5
 
-            log "Waiting up to $WAIT_MINUTES minutes for runner setup (checking every ${CHECK_INTERVAL}s)..."
+            log "Initiating instance termination..."
 
-            # Check periodically during wait time if runner is already up
-            while [ $WAITED -lt $MAX_WAIT_SECONDS ]; do
-              if pgrep -f "Runner.Listener" > /dev/null 2>&1 || [ -f /var/run/github-runner-started ]; then
-                log "Runner process detected after $WAITED seconds, starting monitoring"
-                break
-              fi
-
-              sleep $CHECK_INTERVAL
-              WAITED=$((WAITED + CHECK_INTERVAL))
-
-              # Log progress every 30 seconds
-              if [ $((WAITED % 30)) -eq 0 ] && [ $WAITED -lt $MAX_WAIT_SECONDS ]; then
-                log "Still waiting for runner... ${WAITED}s/${MAX_WAIT_SECONDS}s"
-              fi
-            done
-
-            if [ $WAITED -ge $MAX_WAIT_SECONDS ]; then
-              log "Wait period completed (${MAX_WAIT_SECONDS}s), starting monitoring"
-            fi
-
-            while true; do
-              # Check if runner process exists or is being configured
-              if pgrep -f "Runner.Listener" > /dev/null 2>&1 || pgrep -f "config.sh" > /dev/null 2>&1 || pgrep -f "run.sh" > /dev/null 2>&1; then
-                log "Runner process detected, continuing monitoring"
-              else
-                # Double-check after a delay
-                log "Runner process not detected, waiting $POLL_INTERVAL seconds before verification"
-                sleep $POLL_INTERVAL
-
-                if ! pgrep -f "Runner.Listener" > /dev/null 2>&1 && ! pgrep -f "config.sh" > /dev/null 2>&1 && ! pgrep -f "run.sh" > /dev/null 2>&1; then
-                  log "Runner confirmed stopped, initiating self-termination"
-
-                  # Shutdown instance (will terminate due to launch configuration; see start_aws_gha_runner/start.py)
-                  shutdown -h now
-
-                  exit 0
-                else
-                  log "False alarm, runner still active"
-                fi
-              fi
-
-              sleep $POLL_INTERVAL
-            done
+            # Shutdown instance (will terminate due to launch configuration)
+            shutdown -h now
             EOF
 
-            chmod +x /usr/local/bin/github-runner-cleanup.sh
+            chmod +x /opt/runner-termination-hook.sh
 
-            # Enable and start the service
-            systemctl daemon-reload
-            systemctl enable github-runner-cleanup.service
+            # Configure runner hooks via .env file
+            # Find the runner directory (it should be created by gha-runner)
+            RUNNER_DIR="$USER_HOME/actions-runner"
+
+            # Wait for runner directory to be created
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Waiting for runner directory to be created..."
+            while [ ! -d "$RUNNER_DIR" ]; do
+              sleep 5
+            done
+
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Runner directory found at $RUNNER_DIR"
+
+            # Create .env file with hook configuration
+            cat > "$RUNNER_DIR/.env" << EOF
+            ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/opt/runner-termination-hook.sh
+            EOF
+
+            chown "$DEFAULT_USER:$DEFAULT_USER" "$RUNNER_DIR/.env"
+
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Runner hooks configured"
 
             # Create a marker file to indicate userdata completion
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] Userdata script completed" >> /var/log/runner-setup.log
             touch /var/run/runner-userdata-complete
-
-            systemctl start github-runner-cleanup.service
         env:
           GH_PAT: ${{ secrets.GH_SA_TOKEN }}

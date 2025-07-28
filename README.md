@@ -169,8 +169,6 @@ This launches an EC2 instance, runs the `gpu-test` job on it, and automatically 
 | `ec2_key_name`          | EC2 key pair name for SSH access | - |
 | `ec2_security_group_id` | Security group ID (must allow SSH if using) | - |
 | `ssh_pubkey`            | Additional SSH public key to authorize | - |
-| `shutdown_poll_wait`    | Minutes to wait for runner setup before monitoring | `3` |
-| `poll_interval`         | Seconds between runner process checks | `15` |
 
 ### Environment Variables
 
@@ -189,10 +187,10 @@ Priority: workflow inputs > environment variables > hardcoded defaults
 ## How It Works
 
 1. The workflow launches an EC2 instance using the specified configuration
-2. A GitHub Actions runner is installed and registered
+2. A GitHub Actions runner is installed and registered with a post-job hook
 3. Your job runs on the EC2 instance
-4. A `systemd` service monitors the runner process on the instance (polling every 15 seconds, by default)
-5. When the runner stops (job completes, detected as 2 consecutive runner-process "health checks" failing), the instance self-terminates
+4. When the job completes, the runner's post-job hook automatically triggers
+5. The hook initiates a graceful shutdown, which terminates the instance
 
 ## Security
 
@@ -327,15 +325,14 @@ If the instance doesn't terminate after the workflow completes:
 
    (This requires having provided an `ec2_key_name` (or `ssh_pubkey`) and `ec2_security_group`; see [SSH Debugging](#ssh-debugging) above).
 
-2. **Check the cleanup service logs**:
+2. **Check the termination hook logs**:
    ```bash
-   sudo journalctl -u github-runner-cleanup
-   sudo cat /var/log/github-runner-cleanup.log
+   sudo cat /var/log/runner-termination-hook.log
    ```
 
-3. **Verify the service status**:
+3. **Verify the runner hooks are configured**:
    ```bash
-   sudo systemctl status github-runner-cleanup
+   cat ~/actions-runner/.env
    ```
 
 4. **Check termination behavior**:
@@ -346,7 +343,7 @@ If the instance doesn't terminate after the workflow completes:
      --region us-east-1
    ```
 
-**Note**: The cleanup service waits for the runner to start (default 3 minutes, configurable via `shutdown_poll_wait`). It checks every 10 seconds during this period and begins monitoring immediately when the runner is detected. Once monitoring begins, it checks every 15 seconds if the runner is still active. When 2 consecutive checks are missed, the instance shuts down.
+**Note**: The instance uses GitHub's native runner hooks feature. The `ACTIONS_RUNNER_HOOK_JOB_COMPLETED` environment variable is configured to run a termination script immediately after each job completes. This ensures reliable and immediate cleanup without the need for polling or monitoring services.
 
 [`g4dn.xlarge`]: https://instances.vantage.sh/aws/ec2/g4dn.xlarge
 [Pulumi]: https://www.pulumi.com
