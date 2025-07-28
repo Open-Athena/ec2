@@ -1,0 +1,254 @@
+name: EC2 Runner
+#
+# Environment variables (can be set at org/repo level):
+#   AWS_ROLE - AWS role ARN for EC2 operations (required if not passed as input)
+#   EC2_IMAGE_ID - Default AMI ID
+#   EC2_INSTANCE_TYPE - Default instance type
+#   EC2_HOME_DIR - Default home directory
+#   EC2_KEY_NAME - Default SSH key pair name
+#   EC2_SECURITY_GROUP_ID - Default security group ID
+#   SSH_PUBKEY - Default SSH public key to add to instances
+#
+# Priority: inputs > vars > defaults
+
+on:
+  workflow_call:
+    secrets:
+      GH_SA_TOKEN:
+        description: "GitHub token with permissions to manage self-hosted runners"
+        required: true
+    inputs:
+      aws_role:
+        description: "AWS role ARN to assume for EC2 operations (falls back to vars.AWS_ROLE)"
+        required: false
+        type: string
+      ec2_image_id:
+        description: "AWS AMI ID to use (falls back to vars.EC2_IMAGE_ID)"
+        required: false
+        type: string
+        default: "ami-00096836009b16a22" # Deep Learning OSS Nvidia Driver AMI GPU PyTorch
+      ec2_instance_type:
+        description: "AWS instance type (falls back to vars.EC2_INSTANCE_TYPE)"
+        required: false
+        type: string
+        default: "g4dn.xlarge"
+      ec2_home_dir:
+        description: "Home directory on the AWS instance (falls back to vars.EC2_HOME_DIR)"
+        required: false
+        type: string
+        default: "/home/ubuntu"
+      ec2_key_name:
+        description: "Name of an EC2 key pair to use for SSH access (falls back to vars.EC2_KEY_NAME)"
+        required: false
+        type: string
+      ec2_security_group_id:
+        description: "AWS security group ID (falls back to vars.EC2_SECURITY_GROUP_ID)"
+        required: false
+        type: string
+      shutdown_poll_wait:
+        description: "Minutes to wait for runner setup before monitoring for termination"
+        required: false
+        type: number
+        default: 3
+      poll_interval:
+        description: "Interval in seconds to check if GHA process is still running"
+        required: false
+        type: number
+        default: 15
+      ssh_pubkey:
+        description: "SSH public key to add to authorized_keys (falls back to vars.SSH_PUBKEY)"
+        required: false
+        type: string
+    outputs:
+      instance:
+        description: "Instance ID for runs-on"
+        value: ${{ jobs.start-ec2-runner.outputs.instance }}
+
+permissions:
+  id-token: write # Required for AWS OIDC
+
+jobs:
+  start-ec2-runner:
+    runs-on: ubuntu-latest
+    outputs:
+      instance: ${{ steps.aws-start.outputs.label }}
+    steps:
+      - name: Check AWS_ROLE configuration
+        run: |
+          if [ -z "${{ inputs.aws_role || vars.AWS_ROLE }}" ]; then
+            echo "ERROR: AWS_ROLE must be provided either as an input or as a repository/organization variable"
+            echo "Please set 'aws_role' input or 'AWS_ROLE' variable"
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.aws_role || vars.AWS_ROLE }}
+          role-session-name: github-actions-session
+          aws-region: us-east-1
+
+      - name: Create cloud runner
+        id: aws-start
+        uses: Open-Athena/start-aws-gha-runner@v1
+        with:
+          aws_image_id: ${{ inputs.ec2_image_id || vars.EC2_IMAGE_ID }}
+          aws_instance_type: ${{ inputs.ec2_instance_type || vars.EC2_INSTANCE_TYPE }}
+          aws_home_dir: ${{ inputs.ec2_home_dir || vars.EC2_HOME_DIR }}
+          aws_key_name: ${{ inputs.ec2_key_name || vars.EC2_KEY_NAME }}
+          aws_security_group_id: ${{ inputs.ec2_security_group_id || vars.EC2_SECURITY_GROUP_ID }}
+          aws_tags: |
+            [
+              { "Key": "Name", "Value": "gha#${{ github.run_id }}" },
+              { "Key": "workflow", "Value": "${{ github.workflow }}" },
+              { "Key": "repository", "Value": "${{ github.repository }}" },
+              { "Key": "gha_url", "Value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" }
+            ]
+          aws_userdata: |
+            # Instance is already configured to terminate on shutdown via launch parameter
+
+            # Create log file for debugging
+            exec > >(tee -a /var/log/runner-setup.log)
+            exec 2>&1
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting runner setup userdata script"
+
+            # Configure SSH access
+            # Get the home directory for the default user
+            case "$(id -un 2>/dev/null)" in
+              ec2-user)
+                USER_HOME="/home/ec2-user"
+                DEFAULT_USER="ec2-user"
+                ;;
+              ubuntu)
+                USER_HOME="/home/ubuntu"
+                DEFAULT_USER="ubuntu"
+                ;;
+              *)
+                USER_HOME="/root"
+                DEFAULT_USER="root"
+                ;;
+            esac
+
+            # Create .ssh directory if it doesn't exist
+            mkdir -p "$USER_HOME/.ssh"
+            chmod 700 "$USER_HOME/.ssh"
+            touch "$USER_HOME/.ssh/authorized_keys"
+            chmod 600 "$USER_HOME/.ssh/authorized_keys"
+
+            # Add default SSH public key from variable if provided
+            if [ -n "${{ vars.SSH_PUBKEY }}" ]; then
+              echo "[$(date '+%Y-%m-%d %H:%M:%S')] Adding default SSH public key from variable"
+              echo "${{ vars.SSH_PUBKEY }}" >> "$USER_HOME/.ssh/authorized_keys"
+            fi
+
+            # Add input SSH public key if provided
+            if [ -n "${{ inputs.ssh_pubkey }}" ]; then
+              echo "[$(date '+%Y-%m-%d %H:%M:%S')] Adding SSH public key from workflow input"
+              echo "${{ inputs.ssh_pubkey }}" >> "$USER_HOME/.ssh/authorized_keys"
+            fi
+
+            # Fix ownership
+            chown -R "$DEFAULT_USER:$DEFAULT_USER" "$USER_HOME/.ssh"
+
+            if [ -s "$USER_HOME/.ssh/authorized_keys" ]; then
+              echo "[$(date '+%Y-%m-%d %H:%M:%S')] SSH access configured with $(wc -l < $USER_HOME/.ssh/authorized_keys) key(s)"
+            else
+              echo "[$(date '+%Y-%m-%d %H:%M:%S')] No SSH keys configured"
+            fi
+
+            # Create self-termination service
+            cat > /etc/systemd/system/github-runner-cleanup.service << 'EOF'
+            [Unit]
+            Description=GitHub Runner Self-Termination
+            After=network.target
+
+            [Service]
+            Type=simple
+            ExecStart=/usr/local/bin/github-runner-cleanup.sh
+            Restart=always
+            RestartSec=60
+            User=root
+
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+
+            # Create cleanup script
+            cat > /usr/local/bin/github-runner-cleanup.sh << 'EOF'
+            #!/bin/bash
+
+            # Log function
+            log() {
+              echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> /var/log/github-runner-cleanup.log
+            }
+
+            log "GitHub Runner cleanup service started"
+            POLL_INTERVAL=${{ inputs.poll_interval }}
+            log "Poll interval set to $POLL_INTERVAL seconds"
+
+            # Smart wait for runner to be installed
+            WAIT_MINUTES=${{ inputs.shutdown_poll_wait }}
+            MAX_WAIT_SECONDS=$((WAIT_MINUTES * 60))
+            WAITED=0
+            CHECK_INTERVAL=10
+
+            log "Waiting up to $WAIT_MINUTES minutes for runner setup (checking every ${CHECK_INTERVAL}s)..."
+
+            # Check periodically during wait time if runner is already up
+            while [ $WAITED -lt $MAX_WAIT_SECONDS ]; do
+              if pgrep -f "Runner.Listener" > /dev/null 2>&1 || [ -f /var/run/github-runner-started ]; then
+                log "Runner process detected after $WAITED seconds, starting monitoring"
+                break
+              fi
+
+              sleep $CHECK_INTERVAL
+              WAITED=$((WAITED + CHECK_INTERVAL))
+
+              # Log progress every 30 seconds
+              if [ $((WAITED % 30)) -eq 0 ] && [ $WAITED -lt $MAX_WAIT_SECONDS ]; then
+                log "Still waiting for runner... ${WAITED}s/${MAX_WAIT_SECONDS}s"
+              fi
+            done
+
+            if [ $WAITED -ge $MAX_WAIT_SECONDS ]; then
+              log "Wait period completed (${MAX_WAIT_SECONDS}s), starting monitoring"
+            fi
+
+            while true; do
+              # Check if runner process exists or is being configured
+              if pgrep -f "Runner.Listener" > /dev/null 2>&1 || pgrep -f "config.sh" > /dev/null 2>&1 || pgrep -f "run.sh" > /dev/null 2>&1; then
+                log "Runner process detected, continuing monitoring"
+              else
+                # Double-check after a delay
+                log "Runner process not detected, waiting $POLL_INTERVAL seconds before verification"
+                sleep $POLL_INTERVAL
+
+                if ! pgrep -f "Runner.Listener" > /dev/null 2>&1 && ! pgrep -f "config.sh" > /dev/null 2>&1 && ! pgrep -f "run.sh" > /dev/null 2>&1; then
+                  log "Runner confirmed stopped, initiating self-termination"
+
+                  # Shutdown instance (will terminate due to launch configuration; see start_aws_gha_runner/start.py)
+                  shutdown -h now
+
+                  exit 0
+                else
+                  log "False alarm, runner still active"
+                fi
+              fi
+
+              sleep $POLL_INTERVAL
+            done
+            EOF
+
+            chmod +x /usr/local/bin/github-runner-cleanup.sh
+
+            # Enable and start the service
+            systemctl daemon-reload
+            systemctl enable github-runner-cleanup.service
+
+            # Create a marker file to indicate userdata completion
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Userdata script completed" >> /var/log/runner-setup.log
+            touch /var/run/runner-userdata-complete
+
+            systemctl start github-runner-cleanup.service
+        env:
+          GH_PAT: ${{ secrets.GH_SA_TOKEN }}
