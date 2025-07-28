@@ -22,34 +22,34 @@ on:
         description: "AWS role ARN to assume for EC2 operations (falls back to vars.AWS_ROLE)"
         required: false
         type: string
-      aws_image_id:
+      ec2_image_id:
         description: "AWS AMI ID to use (falls back to vars.EC2_IMAGE_ID)"
         required: false
         type: string
         default: "ami-00096836009b16a22" # Deep Learning OSS Nvidia Driver AMI GPU PyTorch
-      aws_instance_type:
+      ec2_instance_type:
         description: "AWS instance type (falls back to vars.EC2_INSTANCE_TYPE)"
         required: false
         type: string
         default: "g4dn.xlarge"
-      aws_home_dir:
+      ec2_home_dir:
         description: "Home directory on the AWS instance (falls back to vars.EC2_HOME_DIR)"
         required: false
         type: string
         default: "/home/ubuntu"
+      ec2_key_name:
+        description: "Name of an EC2 key pair to use for SSH access (falls back to vars.EC2_KEY_NAME)"
+        required: false
+        type: string
+      ec2_security_group_id:
+        description: "AWS security group ID (falls back to vars.EC2_SECURITY_GROUP_ID)"
+        required: false
+        type: string
       shutdown_poll_wait:
         description: "Minutes to wait for runner setup before monitoring for termination"
         required: false
         type: number
         default: 3
-      aws_key_name:
-        description: "Name of an EC2 key pair to use for SSH access (falls back to vars.EC2_KEY_NAME)"
-        required: false
-        type: string
-      aws_security_group_id:
-        description: "AWS security group ID (falls back to vars.EC2_SECURITY_GROUP_ID)"
-        required: false
-        type: string
       poll_interval:
         description: "Interval in seconds to check if GHA process is still running"
         required: false
@@ -92,11 +92,11 @@ jobs:
         id: aws-start
         uses: Open-Athena/start-aws-gha-runner@v1
         with:
-          aws_image_id: ${{ inputs.aws_image_id || vars.EC2_IMAGE_ID }}
-          aws_instance_type: ${{ inputs.aws_instance_type || vars.EC2_INSTANCE_TYPE }}
-          aws_home_dir: ${{ inputs.aws_home_dir || vars.EC2_HOME_DIR }}
-          aws_key_name: ${{ inputs.aws_key_name || vars.EC2_KEY_NAME }}
-          aws_security_group_id: ${{ inputs.aws_security_group_id || vars.EC2_SECURITY_GROUP_ID }}
+          aws_image_id: ${{ inputs.ec2_image_id || vars.EC2_IMAGE_ID }}
+          aws_instance_type: ${{ inputs.ec2_instance_type || vars.EC2_INSTANCE_TYPE }}
+          aws_home_dir: ${{ inputs.ec2_home_dir || vars.EC2_HOME_DIR }}
+          aws_key_name: ${{ inputs.ec2_key_name || vars.EC2_KEY_NAME }}
+          aws_security_group_id: ${{ inputs.ec2_security_group_id || vars.EC2_SECURITY_GROUP_ID }}
           aws_tags: |
             [
               { "Key": "Name", "Value": "gha#${{ github.run_id }}" },

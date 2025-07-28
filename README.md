@@ -160,17 +160,17 @@ This launches an EC2 instance, runs the `gpu-test` job on it, and automatically 
 
 ### Workflow Inputs
 
-| Input | Description | Default |
-|-------|-------------|---------|
-| `aws_role` | AWS role ARN for EC2 operations | `vars.AWS_ROLE` |
-| `aws_instance_type` | EC2 instance type | [`g4dn.xlarge`](https://instances.vantage.sh/aws/ec2/g4dn.xlarge) (cheapest GPU instance) |
-| `aws_image_id` | AMI ID | `ami-00096836009b16a22` (Deep Learning AMI) |
-| `aws_home_dir` | Home directory path | `/home/ubuntu` |
-| `aws_key_name` | EC2 key pair name for SSH access | - |
-| `aws_security_group_id` | Security group ID (must allow SSH if using) | - |
-| `ssh_pubkey` | Additional SSH public key to authorize | - |
-| `shutdown_poll_wait` | Minutes to wait for runner setup before monitoring | `3` |
-| `poll_interval` | Seconds between runner process checks | `15` |
+| Input                   | Description | Default |
+|-------------------------|-------------|---------|
+| `aws_role`              | AWS role ARN for EC2 operations | `vars.AWS_ROLE` |
+| `ec2_instance_type`     | EC2 instance type | [`g4dn.xlarge`](https://instances.vantage.sh/aws/ec2/g4dn.xlarge) (cheapest GPU instance) |
+| `ec2_image_id`          | AMI ID | `ami-00096836009b16a22` (Deep Learning AMI) |
+| `ec2_home_dir`          | Home directory path | `/home/ubuntu` |
+| `ec2_key_name`          | EC2 key pair name for SSH access | - |
+| `ec2_security_group_id` | Security group ID (must allow SSH if using) | - |
+| `ssh_pubkey`            | Additional SSH public key to authorize | - |
+| `shutdown_poll_wait`    | Minutes to wait for runner setup before monitoring | `3` |
+| `poll_interval`         | Seconds between runner process checks | `15` |
 
 ### Environment Variables
 
