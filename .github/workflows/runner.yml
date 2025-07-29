@@ -90,7 +90,7 @@ jobs:
 
       - name: Create cloud runner
         id: aws-start
-        uses: Open-Athena/start-aws-gha-runner@v1
+        uses: Open-Athena/start-aws-gha-runner@rw/chown
         with:
           aws_image_id: ${{ inputs.ec2_image_id || vars.EC2_IMAGE_ID }}
           aws_instance_type: ${{ inputs.ec2_instance_type || vars.EC2_INSTANCE_TYPE }}
