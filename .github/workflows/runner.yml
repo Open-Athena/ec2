@@ -162,52 +162,8 @@ jobs:
               echo "[$(date '+%Y-%m-%d %H:%M:%S')] No SSH keys configured"
             fi
 
-            # Create runner hook script for auto-termination
-            cat > /opt/runner-termination-hook.sh << 'EOF'
-            #!/bin/bash
-
-            # Log function
-            log() {
-              echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a /var/log/runner-termination-hook.log
-            }
-
-            log "GitHub Runner termination hook triggered"
-            log "Job Name: ${GITHUB_JOB}"
-            log "Repository: ${GITHUB_REPOSITORY}"
-            log "Run ID: ${GITHUB_RUN_ID}"
-            log "Runner Name: ${RUNNER_NAME}"
-
-            # Give a brief moment for any cleanup
-            sleep 5
-
-            log "Initiating instance termination..."
-
-            # Shutdown instance (will terminate due to launch configuration)
-            shutdown -h now
-            EOF
-
-            chmod +x /opt/runner-termination-hook.sh
-
-            # Configure runner hooks via .env file
-            # Find the runner directory (it should be created by gha-runner)
-            RUNNER_DIR="$USER_HOME/actions-runner"
-
-            # Wait for runner directory to be created
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Waiting for runner directory to be created..."
-            while [ ! -d "$RUNNER_DIR" ]; do
-              sleep 5
-            done
-
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Runner directory found at $RUNNER_DIR"
-
-            # Create .env file with hook configuration
-            cat > "$RUNNER_DIR/.env" << EOF
-            ACTIONS_RUNNER_HOOK_JOB_COMPLETED=/opt/runner-termination-hook.sh
-            EOF
-
-            chown "$DEFAULT_USER:$DEFAULT_USER" "$RUNNER_DIR/.env"
-
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] Runner hooks configured"
+            # Note: Runner hooks are now configured by start-aws-gha-runner action
+            # to support multiple sequential jobs on the same instance
 
             # Create a marker file to indicate userdata completion
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] Userdata script completed" >> /var/log/runner-setup.log
