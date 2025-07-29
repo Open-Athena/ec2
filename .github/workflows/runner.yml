@@ -88,6 +88,22 @@ jobs:
           role-session-name: github-actions-session
           aws-region: us-east-1
 
+      - name: 'Extract workflow name and number (for instance "Name" tag)'
+        id: names
+        run: |
+          # Extract filename from workflow_ref (e.g., "owner/repo/.github/workflows/test-gpu.yml@ref" -> "test-gpu")
+          if [ -n "${{ github.workflow_ref }}" ]; then
+            WORKFLOW_FILE=$(echo "${{ github.workflow_ref }}" | sed 's/.*\/\([^@]*\)@.*/\1/' | sed 's/\.yml$//' | sed 's/\.yaml$//')
+          else
+            # Fallback to workflow name if ref not available
+            WORKFLOW_FILE="${{ github.workflow }}"
+          fi
+          echo "filename=$WORKFLOW_FILE" >> $GITHUB_OUTPUT
+
+          # Extract repository basename (e.g., "Open-Athena/ec2-runner-demo" -> "ec2-runner-demo")
+          REPO_BASENAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+          echo "repo_basename=$REPO_BASENAME" >> $GITHUB_OUTPUT
+
       - name: Create cloud runner
         id: aws-start
         uses: Open-Athena/start-aws-gha-runner@rw/chown
@@ -99,7 +115,7 @@ jobs:
           aws_security_group_id: ${{ inputs.ec2_security_group_id || vars.EC2_SECURITY_GROUP_ID }}
           aws_tags: |
             [
-              { "Key": "Name", "Value": "gha#${{ github.run_id }}" },
+              { "Key": "Name", "Value": "${{ steps.names.outputs.repo_basename }}/${{ steps.names.outputs.filename }}#${{ github.run_number }}" },
               { "Key": "workflow", "Value": "${{ github.workflow }}" },
               { "Key": "repository", "Value": "${{ github.repository }}" },
               { "Key": "gha_url", "Value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" }

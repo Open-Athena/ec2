@@ -9,7 +9,7 @@ Demo [ec2-runner-demo](https://github.com/Open-Athena/ec2-runner-demo) (currentl
 - 🧹 Self-terminates when job completes (no separate stop job needed)
 - 🔑 Uses GitHub OIDC for AWS authentication (no long-lived credentials)
 - ⚡ Single reusable workflow call
-- 🎯 Defaults to [`g4dn.xlarge`] (cheapest EC2 GPU instance we're aware of) and `ami-00096836009b16a22` (`amazon/Deep Learning OSS Nvidia Driver AMI GPU PyTorch 2.4.1 (Ubuntu 22.04) 20250302`) 
+- 🎯 Defaults to [`g4dn.xlarge`] (cheapest EC2 GPU instance we're aware of) and `ami-00096836009b16a22` (`amazon/Deep Learning OSS Nvidia Driver AMI GPU PyTorch 2.4.1 (Ubuntu 22.04) 20250302`)
 
 ## Setup
 
