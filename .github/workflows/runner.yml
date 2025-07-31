@@ -108,13 +108,11 @@ jobs:
           aws_home_dir: ${{ inputs.ec2_home_dir || vars.EC2_HOME_DIR }}
           aws_key_name: ${{ inputs.ec2_key_name || vars.EC2_KEY_NAME }}
           aws_security_group_id: ${{ inputs.ec2_security_group_id || vars.EC2_SECURITY_GROUP_ID }}
+          ssh_pubkey: ${{ inputs.ssh_pubkey || vars.SSH_PUBKEY }}
           runner_grace_period: ${{ inputs.runner_grace_period }}
           aws_tags: |
             [
-              { "Key": "Name", "Value": "${{ steps.names.outputs.repo_basename }}/${{ steps.names.outputs.filename }}#${{ github.run_number }}" },
-              { "Key": "workflow", "Value": "${{ github.workflow }}" },
-              { "Key": "repository", "Value": "${{ github.repository }}" },
-              { "Key": "gha_url", "Value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" }
+              { "Key": "Name", "Value": "${{ steps.names.outputs.repo_basename }}/${{ steps.names.outputs.filename }}#${{ github.run_number }}" }
             ]
           aws_userdata: |
             # Instance is already configured to terminate on shutdown via launch parameter
@@ -123,50 +121,6 @@ jobs:
             exec > >(tee -a /var/log/runner-setup.log)
             exec 2>&1
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting runner setup userdata script"
-
-            # Configure SSH access
-            # Get the home directory for the default user
-            case "$(id -un 2>/dev/null)" in
-              ec2-user)
-                USER_HOME="/home/ec2-user"
-                DEFAULT_USER="ec2-user"
-                ;;
-              ubuntu)
-                USER_HOME="/home/ubuntu"
-                DEFAULT_USER="ubuntu"
-                ;;
-              *)
-                USER_HOME="/root"
-                DEFAULT_USER="root"
-                ;;
-            esac
-
-            # Create .ssh directory if it doesn't exist
-            mkdir -p "$USER_HOME/.ssh"
-            chmod 700 "$USER_HOME/.ssh"
-            touch "$USER_HOME/.ssh/authorized_keys"
-            chmod 600 "$USER_HOME/.ssh/authorized_keys"
-
-            # Add default SSH public key from variable if provided
-            if [ -n "${{ vars.SSH_PUBKEY }}" ]; then
-              echo "[$(date '+%Y-%m-%d %H:%M:%S')] Adding default SSH public key from variable"
-              echo "${{ vars.SSH_PUBKEY }}" >> "$USER_HOME/.ssh/authorized_keys"
-            fi
-
-            # Add input SSH public key if provided
-            if [ -n "${{ inputs.ssh_pubkey }}" ]; then
-              echo "[$(date '+%Y-%m-%d %H:%M:%S')] Adding SSH public key from workflow input"
-              echo "${{ inputs.ssh_pubkey }}" >> "$USER_HOME/.ssh/authorized_keys"
-            fi
-
-            # Fix ownership
-            chown -R "$DEFAULT_USER:$DEFAULT_USER" "$USER_HOME/.ssh"
-
-            if [ -s "$USER_HOME/.ssh/authorized_keys" ]; then
-              echo "[$(date '+%Y-%m-%d %H:%M:%S')] SSH access configured with $(wc -l < $USER_HOME/.ssh/authorized_keys) key(s)"
-            else
-              echo "[$(date '+%Y-%m-%d %H:%M:%S')] No SSH keys configured"
-            fi
 
             # Create a marker file to indicate userdata completion
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] Userdata script completed" >> /var/log/runner-setup.log

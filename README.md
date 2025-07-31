@@ -188,10 +188,11 @@ Priority: workflow inputs > environment variables > hardcoded defaults
 ## How It Works
 
 1. The workflow launches an EC2 instance using the specified configuration
-2. A GitHub Actions runner is installed and registered with runner hooks
-3. Your job(s) run on the EC2 instance
-4. After each job completes, the runner waits for the grace period before checking for termination
-5. If no new jobs start within the grace period, the instance terminates
+2. SSH access is configured if `ssh_pubkey` or EC2 key pair is provided
+3. A GitHub Actions runner is installed and registered with runner hooks
+4. Your job(s) run on the EC2 instance
+5. After each job completes, the runner waits for the grace period before checking for termination
+6. If no new jobs start within the grace period, the instance terminates
 
 ## Multi-Job Workflows
 
