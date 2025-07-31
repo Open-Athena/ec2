@@ -1,15 +1,15 @@
 # Open-Athena/ec2
-Auto-terminating EC2 GHA runner.
+Self-terminating EC2 GHA runner.
 
-Demo [ec2-runner-demo](https://github.com/Open-Athena/ec2-runner-demo) (currently private; stay tuned)!
+Demo workflows: [Open-Athena/ec2-runner-demo].
 
 ## Features
 
-- 🚀 Starts EC2 instances on-demand for GitHub Actions jobs
-- 🧹 Self-terminates when job completes (no separate stop job needed)
-- 🔑 Uses GitHub OIDC for AWS authentication (no long-lived credentials)
-- ⚡ Single reusable workflow call
-- 🎯 Defaults to [`g4dn.xlarge`] (cheapest EC2 GPU instance we're aware of) and `ami-00096836009b16a22` (`amazon/Deep Learning OSS Nvidia Driver AMI GPU PyTorch 2.4.1 (Ubuntu 22.04) 20250302`)
+- Starts EC2 instances on-demand for GitHub Actions jobs
+- Self-terminates when job completes (no separate stop job needed)
+- Uses GitHub OIDC for AWS authentication (no long-lived credentials)
+- Single reusable workflow call
+- Defaults to [`g4dn.xlarge`] (cheapest EC2 GPU instance we're aware of) and `ami-00096836009b16a22` (`amazon/Deep Learning OSS Nvidia Driver AMI GPU PyTorch 2.4.1 (Ubuntu 22.04) 20250302`)
 
 ## Setup
 
@@ -111,7 +111,7 @@ for index, repo in enumerate(ORGS_REPOS_UPDATEME):
 ```
 </details>
 
-The role must be able to launch, tag, describe, and shutdown instances, and should be integrated with GitHub's OIDC provider (see [GitHub's documentation](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services) for more info).
+The role must be able to launch, tag, describe, and shutdown instances, and should be integrated with GitHub's OIDC provider (see [GitHub's documentation][gh oidc] for more info).
 
 ### 2. Configure Secrets and Variables
 
@@ -166,6 +166,7 @@ This launches an EC2 instance, runs the `gpu-test` job on it, and automatically 
 | `ec2_instance_type`     | EC2 instance type | [`g4dn.xlarge`](https://instances.vantage.sh/aws/ec2/g4dn.xlarge) (cheapest GPU instance) |
 | `ec2_image_id`          | AMI ID | `ami-00096836009b16a22` (Deep Learning AMI) |
 | `ec2_home_dir`          | Home directory path | `/home/ubuntu` |
+| `runner_grace_period`   | Seconds to wait before terminating after last job | `30` |
 | `ec2_key_name`          | EC2 key pair name for SSH access | - |
 | `ec2_security_group_id` | Security group ID (must allow SSH if using) | - |
 | `ssh_pubkey`            | Additional SSH public key to authorize | - |
@@ -187,10 +188,46 @@ Priority: workflow inputs > environment variables > hardcoded defaults
 ## How It Works
 
 1. The workflow launches an EC2 instance using the specified configuration
-2. A GitHub Actions runner is installed and registered with a post-job hook
-3. Your job runs on the EC2 instance
-4. When the job completes, the runner's post-job hook automatically triggers
-5. The hook initiates a graceful shutdown, which terminates the instance
+2. A GitHub Actions runner is installed and registered with runner hooks
+3. Your job(s) run on the EC2 instance
+4. After each job completes, the runner waits for the grace period before checking for termination
+5. If no new jobs start within the grace period, the instance terminates
+
+## Multi-Job Workflows
+
+This workflow supports running multiple sequential jobs on the same EC2 instance:
+
+```yaml
+jobs:
+  ec2:
+    uses: Open-Athena/ec2/.github/workflows/runner.yml@main
+    secrets: inherit
+    with:
+      runner_grace_period: "120"  # 2 minutes for multi-job workflows
+
+  prepare:
+    needs: ec2
+    runs-on: ${{ needs.ec2.outputs.instance }}
+    steps:
+      - run: echo "Setting up environment"
+
+  train:
+    needs: [ec2, prepare]
+    runs-on: ${{ needs.ec2.outputs.instance }}
+    steps:
+      - run: echo "Training on GPU"
+
+  evaluate:
+    needs: [ec2, train]
+    runs-on: ${{ needs.ec2.outputs.instance }}
+    steps:
+      - run: echo "Evaluating results"
+```
+
+The `runner_grace_period` parameter controls how long to wait after a job completes:
+- **Default (30s)**: Suitable for single-job workflows
+- **60-120s**: Recommended for multi-job workflows
+- **Higher values**: For workflows with slow job startup times
 
 ## Security
 
@@ -347,3 +384,6 @@ If the instance doesn't terminate after the workflow completes:
 
 [`g4dn.xlarge`]: https://instances.vantage.sh/aws/ec2/g4dn.xlarge
 [Pulumi]: https://www.pulumi.com
+[Open-Athena/ec2-runner-demo]: https://github.com/Open-Athena/ec2-runner-demo
+[aws-actions/configure-aws-credentials@v4]: https://github.com/aws-actions/configure-aws-credentials/tree/v4
+[gh oidc]: https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services

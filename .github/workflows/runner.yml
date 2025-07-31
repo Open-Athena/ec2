@@ -101,7 +101,7 @@ jobs:
 
       - name: Create cloud runner
         id: aws-start
-        uses: Open-Athena/start-aws-gha-runner@rw/hooks
+        uses: Open-Athena/ec2-gha-runner@rw/hooks
         with:
           aws_image_id: ${{ inputs.ec2_image_id || vars.EC2_IMAGE_ID }}
           aws_instance_type: ${{ inputs.ec2_instance_type || vars.EC2_INSTANCE_TYPE }}
@@ -167,9 +167,6 @@ jobs:
             else
               echo "[$(date '+%Y-%m-%d %H:%M:%S')] No SSH keys configured"
             fi
-
-            # Note: Runner hooks are now configured by start-aws-gha-runner action
-            # to support multiple sequential jobs on the same instance
 
             # Create a marker file to indicate userdata completion
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] Userdata script completed" >> /var/log/runner-setup.log
